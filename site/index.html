@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Truck It or Flare It</title>
+  <meta name="description" content="What a producer nets by trucking stranded Permian and Eagle Ford gas as CNG or LNG instead of flaring it. Public data only: EIA prices, World Bank/NOAA satellite flare data, OSRM routes.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 21h13v-8h4l3 4v4h-2M7 21v-9h13' stroke='white' stroke-width='2.2' fill='none' stroke-linejoin='round'/%3E%3Ccircle cx='11' cy='22.5' r='2' fill='white'/%3E%3Ccircle cx='22' cy='22.5' r='2' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-row">
+      <div>
+        <h1>Truck it or flare it?</h1>
+        <p class="sub">What a producer keeps by trucking stranded gas instead of burning it: 18 real flares in the Permian &amp; Eagle Ford</p>
+      </div>
+      <div class="top-meta">
+        <span class="pill" id="asof">Loading prices…</span>
+        <a class="pill link" href="https://github.com/KaavinB/virtual-pipeline-netback" target="_blank" rel="noopener">Code &amp; method ↗</a>
+      </div>
+    </div>
+    <nav class="wrap tabs" role="tablist" aria-label="Dashboard sections">
+      <button role="tab" data-tab="start">Start here</button>
+      <button role="tab" data-tab="overview">Overview</button>
+      <button role="tab" data-tab="economics">Economics</button>
+      <button role="tab" data-tab="sensitivity">Sensitivity</button>
+      <button role="tab" data-tab="data">Data &amp; method</button>
+    </nav>
+  </header>
+
+  <section class="scenario" id="scenario" aria-label="What-if inputs">
+    <div class="wrap">
+      <div class="scenario-head">
+        <p id="scenario-status" class="scenario-status"></p>
+        <div class="scenario-actions">
+          <label class="site-pick" id="site-pick">Site
+            <select id="site-select" aria-label="Site"></select>
+          </label>
+          <button class="btn" id="reset" type="button">Reset to today</button>
+          <button class="btn ghost" id="share" type="button">Copy link to this view</button>
+        </div>
+      </div>
+      <button class="btn ghost toggle-controls" id="toggle-controls" type="button" aria-controls="controls" aria-expanded="false">Adjust what-if inputs ▾</button>
+      <div class="controls" id="controls"></div>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <!-- ── Start here ───────────────────────────────────────────── -->
+    <section class="panel" data-panel="start" aria-label="Start here">
+      <div class="hero card">
+        <h2>Should this gas be trucked, or burned?</h2>
+        <p>Oil wells in West and South Texas also produce natural gas. Where no pipeline can take it,
+          producers often <strong>flare</strong> it (burn it on site) and earn nothing. A
+          <strong>virtual pipeline</strong> puts that gas on trucks instead (compressed as CNG or chilled to
+          liquid LNG) and sells it somewhere it is wanted. This page works out, for <strong>18 real flares
+          spotted by satellite</strong>, whether that trip pays, using only public data.</p>
+      </div>
+      <div class="grid two">
+        <div class="card">
+          <h3>The short answer</h3>
+          <ul class="answer" id="short-answer"></ul>
+        </div>
+        <div class="card">
+          <h3>How to use it, in 3 steps</h3>
+          <ol class="steps">
+            <li><strong>Open Overview</strong> to see every site's answer at today's prices.</li>
+            <li><strong>Ask “what if?”</strong> Drag any slider at the top of the page. Every chart updates, and
+              each input you change is marked <span class="chip changed">changed</span>. <em>Reset to today</em> undoes it.</li>
+            <li><strong>Dig deeper.</strong> <em>Economics</em> shows where each dollar goes for one site;
+              <em>Sensitivity</em> shows which assumptions could change the answer.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Try a question</h3>
+          <div class="questions" id="questions"></div>
+        </div>
+        <div class="card">
+          <h3>Reading the charts</h3>
+          <ul class="legend-list">
+            <li><span class="sw s1"></span><strong>Blue</strong> = selling the gas as fuel to a nearby customer</li>
+            <li><span class="sw s2"></span><strong>Orange</strong> = selling it into a pipeline hub</li>
+            <li><span class="flare-line"></span>The dotted <strong>Flaring = $0</strong> line is the alternative: burning earns nothing. Above it beats flaring.</li>
+            <li><span class="status good">✓</span>Trucking beats flaring &nbsp; <span class="status bad">✗</span>Flaring is better</li>
+            <li><span class="chip est">estimate</span> an assumption with no public figure</li>
+            <li><strong>PB-</strong> sites are in the Permian Basin (West Texas / New Mexico), <strong>EF-</strong> in the Eagle Ford (South Texas)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Words you will see</h3>
+        <dl class="glossary" id="glossary"></dl>
+      </div>
+    </section>
+
+    <!-- ── Overview ─────────────────────────────────────────────── -->
+    <section class="panel" data-panel="overview" aria-label="Overview">
+      <p class="headline" id="headline"></p>
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <div class="card-head">
+          <h3>Every site: sell as fuel vs sell into a pipeline</h3>
+          <p class="hint">$ per MMBtu the producer keeps, by site. Bars above the dotted line beat flaring.</p>
+        </div>
+        <div class="chart tall"><canvas id="chart-sites" aria-label="Netback by site, fuel versus pipeline"></canvas></div>
+      </div>
+      <div class="grid map-row">
+        <div class="card">
+          <div class="card-head">
+            <h3>Where the gas is</h3>
+            <p class="hint">Click a site to see its route to the nearest hub. Squares are pipeline hubs.</p>
+          </div>
+          <div id="map" class="map" role="img" aria-label="Map of flare sites and delivery hubs"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3>Site scorecard</h3>
+            <p class="hint">Best option for each site under the inputs above.</p>
+          </div>
+          <div class="table-wrap"><table id="scorecard"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Economics ────────────────────────────────────────────── -->
+    <section class="panel" data-panel="economics" aria-label="Economics">
+      <p class="guide"><strong>How to read this page.</strong> Pick a <em>Site</em> at the top. Each money walk reads
+        left to right: the first bar is the selling price, each red step is a cost, and the last bar is what the
+        producer keeps. Below that: how distance changes the answer, why fuel is worth more than pipeline gas, and how
+        the answer has moved since 2021.</p>
+      <div class="grid two">
+        <div class="card">
+          <div class="card-head"><h3 id="walk-fuel-title">Selling as fuel: where each $ goes</h3>
+            <p class="hint" id="walk-fuel-hint"></p></div>
+          <div class="chart"><canvas id="chart-walk-fuel"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3 id="walk-hub-title">Selling into a pipeline: where each $ goes</h3>
+            <p class="hint" id="walk-hub-hint"></p></div>
+          <div class="chart"><canvas id="chart-walk-hub"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>How far can you haul?</h3>
+            <p class="hint">Netback vs one-way miles. Where a line crosses the dotted line is its break-even distance.</p></div>
+          <div class="chart"><canvas id="chart-distance"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Why fuel sales win</h3>
+            <p class="hint">What one MMBtu is worth, weekly since 2021 (EIA): as a diesel replacement vs as pipeline gas.</p></div>
+          <div class="chart"><canvas id="chart-prices"></canvas></div>
+        </div>
+      </div>
+      <div class="grid wide-narrow">
+        <div class="card">
+          <div class="card-head"><h3>Has it ever paid?</h3>
+            <p class="hint">Best netback by market, weekly average across sites, at actual historical prices and today's cost assumptions.</p></div>
+          <div class="chart"><canvas id="chart-history"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>CNG or LNG?</h3>
+            <p class="hint">LNG carries more per truck but liquefying it is expensive, so it only wins on long hauls.</p></div>
+          <div id="crossover" class="crossover"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Sensitivity ──────────────────────────────────────────── -->
+    <section class="panel" data-panel="sensitivity" aria-label="Sensitivity">
+      <p class="guide"><strong>How to read this page.</strong> Each row is an assumption we can't know exactly. Its bars
+        show how far the producer's take would move if that assumption sat at the <span class="key s3">low</span> or
+        <span class="key s7">high</span> end of its plausible range, with everything else at today's base case.
+        Long bars matter; short ones don't. <strong>No single assumption changes any site's answer.</strong></p>
+      <div class="grid two">
+        <div class="card">
+          <div class="card-head"><h3>What moves the fuel-sale netback?</h3><p class="hint" id="tornado-fuel-hint"></p></div>
+          <div class="chart tall"><canvas id="chart-tornado-fuel"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>What moves the pipeline netback?</h3><p class="hint" id="tornado-hub-hint"></p></div>
+          <div class="chart tall"><canvas id="chart-tornado-hub"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>How much would have to change?</h3>
+          <p class="hint">Break-even points for each site under the inputs above.</p></div>
+        <div class="table-wrap"><table id="breakevens"></table></div>
+      </div>
+    </section>
+
+    <!-- ── Data & method ────────────────────────────────────────── -->
+    <section class="panel" data-panel="data" aria-label="Data and method">
+      <div class="grid two">
+        <div class="card">
+          <h3>Where the numbers come from</h3>
+          <ul class="sources">
+            <li><strong>Gas &amp; diesel prices:</strong> U.S. Energy Information Administration (EIA) API: Henry Hub daily spot, Gulf Coast diesel weekly.</li>
+            <li><strong>Flare sites:</strong> World Bank / NOAA VIIRS satellite flare volumes (2012–2025), inside EIA basin outlines. Sites that flared in each of 2023–25.</li>
+            <li><strong>Driving routes:</strong> OSRM on OpenStreetMap road data.</li>
+            <li><strong>Costs:</strong> World Bank GGFR studies, ATRI trucking costs, DOE fuel properties, Hexagon &amp; OEG container specs, BLS CPI.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>How it's built</h3>
+          <p>A PostgreSQL star schema fed by tested Python ingestion with data-quality checks; all netback logic is
+            SQL views. This page is a static snapshot: it carries the SQL's outputs, and redoes only the final
+            arithmetic for your what-ifs, checked against the SQL by automated tests.
+            <a href="https://github.com/KaavinB/virtual-pipeline-netback" target="_blank" rel="noopener">Read the code and write-ups ↗</a></p>
+          <p class="hint" id="generated"></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Assumptions</h3>
+          <p class="hint">Every input that isn't an observed price, in 2025 dollars. <span class="chip est">estimate</span> = no public figure exists.</p></div>
+        <div class="table-wrap"><table id="assumptions"></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Data-quality checks</h3><p class="hint">Latest pipeline run.</p></div>
+        <div class="table-wrap"><table id="dq"></table></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    A portfolio project by <a href="https://github.com/KaavinB" target="_blank" rel="noopener">@KaavinB</a>. Data: U.S. EIA; World Bank GFMR / NOAA / Payne Institute; © OpenStreetMap contributors (OSRM, map tiles).
+    Illustrative analysis using public data. Not investment advice.
+  </footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

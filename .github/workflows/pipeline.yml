@@ -1,0 +1,72 @@
+# Two jobs, one workflow:
+#   test     - every push / PR: lint + pytest against a freshly migrated, empty Postgres
+#              (tests that need real data are skipped there)
+#   refresh  - weekday schedule: rebuild everything from live sources into a fresh database, run
+#              DQ, sensitivity and the full test suite. A canary on the upstream feeds: if EIA
+#              changes a series, goes stale or returns garbage, this job fails and GitHub emails
+#              the repo owner.
+name: pipeline
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 14 * * 1-5" # 14:00 UTC weekdays, after EIA's Mon (diesel) / Wed (gas) releases
+  workflow_dispatch:
+
+env:
+  PGHOST: localhost
+  PGPORT: 5432
+  PGUSER: vpv
+  PGPASSWORD: vpv
+  PGDATABASE: vpv
+
+jobs:
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: vpv, POSTGRES_PASSWORD: vpv, POSTGRES_DB: vpv }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv sync --locked
+      - run: make lint
+      - run: make migrate
+      - run: make test
+
+  refresh:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: vpv, POSTGRES_PASSWORD: vpv, POSTGRES_DB: vpv }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv sync --locked
+      - run: make migrate
+      - run: make ingest-full
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+      - run: make sites assumptions routes   # ~47 MB World Bank download + 54 OSRM requests at 1/s
+      - run: make dq
+      - run: make sensitivity
+      - run: make test                       # the full suite, including data-dependent tests
+      - name: Save run + DQ log
+        if: always()
+        run: |
+          psql -h localhost -U vpv -d vpv -c "\copy (SELECT * FROM ops.ingest_run) TO 'ingest_run.csv' CSV HEADER"
+          psql -h localhost -U vpv -d vpv -c "\copy (SELECT * FROM ops.v_dq_latest) TO 'dq_latest.csv' CSV HEADER"
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: refresh-${{ github.run_id }}
+          path: "*.csv"
