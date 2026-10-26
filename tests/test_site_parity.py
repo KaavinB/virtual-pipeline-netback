@@ -22,7 +22,10 @@ SCENARIOS = [
 
 
 @pytest.fixture(scope="module")
-def js_results():
+def js_results(database_has_data):
+    # Module-scoped fixtures run before the function-level skip for `data` tests, so check here.
+    if not database_has_data:
+        pytest.skip("needs a populated database (make all)")
     if not shutil.which("node"):
         pytest.skip("node not installed")
     from ingestion.db import connect
